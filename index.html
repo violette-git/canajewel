@@ -32,6 +32,7 @@
             border: 3px solid #27ae60;
             border-radius: 10px;
             margin: 20px 0;
+            cursor: pointer; /* Add cursor pointer to indicate interactivity */
         }
 
         .score-container {
@@ -70,10 +71,30 @@
             border-radius: 5px;
             cursor: pointer;
             margin: 10px;
+            transition: background-color 0.3s; /* Add transition for smoother hover effect */
         }
 
         button:hover {
             background-color: #2ecc71;
+        }
+
+        /* Add status message for feedback */
+        .status-message {
+            height: 24px;
+            margin: 10px 0;
+            font-weight: bold;
+            color: #f1c40f;
+        }
+
+        /* Add animation for tile swapping */
+        @keyframes highlight {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .highlight {
+            animation: highlight 0.3s ease;
         }
     </style>
 </head>
@@ -84,6 +105,8 @@
         <div class="score-container">
             Score: <span id="score">0</span>
         </div>
+
+        <div class="status-message" id="statusMessage"></div>
 
         <canvas id="gameCanvas" width="400" height="400"></canvas>
 
@@ -96,6 +119,7 @@
                 <li>Create matches of <strong>4 or more</strong> identical items in a row or column.</li>
                 <li>Matched items will disappear, and new ones will fall from the top.</li>
                 <li>Score points for each match you make!</li>
+                <li>Swaps that don't create matches will be reversed.</li>
             </ul>
         </div>
     </div>
@@ -114,6 +138,7 @@
         let selectedTile = null;
         let animating = false;
         let matches = [];
+        let statusMessage = "";
 
         // Cannabis leaf SVG paths for different colors
         const cannabisLeaves = [
@@ -132,6 +157,9 @@
             document.getElementById('newGameBtn').addEventListener('click', initGame);
             canvas.addEventListener('click', handleClick);
 
+            // Add status message element
+            statusMessage = document.getElementById('statusMessage');
+
             initGame();
         };
 
@@ -142,6 +170,7 @@
             selectedTile = null;
             animating = false;
             matches = [];
+            statusMessage.textContent = "";
 
             document.getElementById('score').textContent = score;
 
@@ -151,16 +180,23 @@
                 for (let j = 0; j < GRID_SIZE; j++) {
                     // Generate a random tile type
                     let tileType;
-                    do {
-                        tileType = Math.floor(Math.random() * cannabisLeaves.length);
-                        board[i][j] = {
-                            type: tileType,
-                            x: j,
-                            y: i,
-                            offsetX: 0,
-                            offsetY: 0
-                        };
-                    } while (checkForMatches()); // Ensure no matches at start
+                    board[i][j] = {
+                        type: Math.floor(Math.random() * cannabisLeaves.length),
+                        x: j,
+                        y: i,
+                        offsetX: 0,
+                        offsetY: 0
+                    };
+                }
+            }
+
+            // Ensure no matches at start
+            while (checkForMatches()) {
+                // If matches exist, randomize the board again
+                for (let i = 0; i < GRID_SIZE; i++) {
+                    for (let j = 0; j < GRID_SIZE; j++) {
+                        board[i][j].type = Math.floor(Math.random() * cannabisLeaves.length);
+                    }
                 }
             }
 
@@ -174,6 +210,24 @@
             // Draw background grid
             ctx.fillStyle = '#2c3e50';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid lines for better visibility
+            ctx.strokeStyle = '#34495e';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                // Horizontal lines
+                ctx.beginPath();
+                ctx.moveTo(0, i * TILE_SIZE);
+                ctx.lineTo(canvas.width, i * TILE_SIZE);
+                ctx.stroke();
+
+                // Vertical lines
+                ctx.beginPath();
+                ctx.moveTo(i * TILE_SIZE, 0);
+                ctx.lineTo(i * TILE_SIZE, canvas.height);
+                ctx.stroke();
+            }
 
             // Draw tiles
             for (let i = 0; i < GRID_SIZE; i++) {
@@ -217,12 +271,20 @@
             const path = new Path2D(leaf.path);
             ctx.fill(path);
 
+            // Add a subtle outline for better visibility
+            ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+            ctx.lineWidth = 0.5;
+            ctx.stroke(path);
+
             ctx.restore();
         }
 
         // Handle click events
         function handleClick(event) {
-            if (animating) return;
+            if (animating) {
+                statusMessage.textContent = "Please wait for current move to complete";
+                return;
+            }
 
             const rect = canvas.getBoundingClientRect();
             const x = Math.floor((event.clientX - rect.left) / TILE_SIZE);
@@ -233,6 +295,7 @@
                 if (!selectedTile) {
                     // First selection
                     selectedTile = { x, y };
+                    statusMessage.textContent = "Select an adjacent tile to swap";
                 } else {
                     // Second selection - check if adjacent
                     const dx = Math.abs(selectedTile.x - x);
@@ -244,6 +307,7 @@
                     } else {
                         // Not adjacent, select new tile
                         selectedTile = { x, y };
+                        statusMessage.textContent = "Select an adjacent tile to swap";
                     }
                 }
 
@@ -253,6 +317,9 @@
 
         // Swap two tiles
         function swapTiles(x1, y1, x2, y2) {
+            animating = true;
+            statusMessage.textContent = "Swapping tiles...";
+
             // Store original tiles
             const tile1 = { ...board[y1][x1] };
             const tile2 = { ...board[y2][x2] };
@@ -266,12 +333,20 @@
             if (checkForMatches()) {
                 // Valid swap - process matches
                 selectedTile = null;
+                statusMessage.textContent = "Match found!";
                 processMatches();
             } else {
-                // Invalid swap - swap back
-                board[y1][x1].type = tile1.type;
-                board[y2][x2].type = tile2.type;
-                selectedTile = null;
+                // Invalid swap - swap back with animation
+                statusMessage.textContent = "No match found. Try again!";
+
+                // Animate the swap back
+                setTimeout(() => {
+                    board[y1][x1].type = tile1.type;
+                    board[y2][x2].type = tile2.type;
+                    selectedTile = null;
+                    animating = false;
+                    drawBoard();
+                }, 500);
             }
         }
 
@@ -362,8 +437,6 @@
 
         // Process matches and update the board
         function processMatches() {
-            animating = true;
-
             // Mark matched tiles for removal
             for (const match of matches) {
                 if (match.horizontal) {
@@ -376,13 +449,38 @@
                     }
                 }
 
-                // Update score
+                // Update score - more points for longer matches
                 score += match.length * 10;
                 document.getElementById('score').textContent = score;
             }
 
             // Draw the board with matched tiles
             drawBoard();
+
+            // Highlight matched tiles
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = '#ffffff';
+
+            for (const match of matches) {
+                if (match.horizontal) {
+                    ctx.fillRect(
+                        match.col * TILE_SIZE,
+                        match.row * TILE_SIZE,
+                        match.length * TILE_SIZE,
+                        TILE_SIZE
+                    );
+                } else {
+                    ctx.fillRect(
+                        match.col * TILE_SIZE,
+                        match.row * TILE_SIZE,
+                        TILE_SIZE,
+                        match.length * TILE_SIZE
+                    );
+                }
+            }
+
+            ctx.restore();
 
             // Remove matched tiles and drop tiles above
             setTimeout(() => {
@@ -392,11 +490,13 @@
 
                 // Check for new matches
                 if (checkForMatches()) {
+                    statusMessage.textContent = "Chain reaction!";
                     processMatches();
                 } else {
                     animating = false;
+                    statusMessage.textContent = "Your move";
                 }
-            }, 300);
+            }, 500);
         }
 
         // Remove matched tiles
@@ -425,6 +525,9 @@
                     }
                 }
             }
+
+            // Animate the dropping tiles
+            drawBoard();
         }
 
         // Fill empty tiles with new ones
@@ -444,6 +547,50 @@
             }
 
             drawBoard();
+        }
+
+        // Check if there are any possible moves
+        function checkForPossibleMoves() {
+            // Try each possible swap and see if it creates a match
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    // Check swap right
+                    if (j < GRID_SIZE - 1) {
+                        // Swap
+                        const temp = board[i][j].type;
+                        board[i][j].type = board[i][j+1].type;
+                        board[i][j+1].type = temp;
+
+                        // Check for matches
+                        const hasMatch = checkForMatches();
+
+                        // Swap back
+                        board[i][j+1].type = board[i][j].type;
+                        board[i][j].type = temp;
+
+                        if (hasMatch) return true;
+                    }
+
+                    // Check swap down
+                    if (i < GRID_SIZE - 1) {
+                        // Swap
+                        const temp = board[i][j].type;
+                        board[i][j].type = board[i+1][j].type;
+                        board[i+1][j].type = temp;
+
+                        // Check for matches
+                        const hasMatch = checkForMatches();
+
+                        // Swap back
+                        board[i+1][j].type = board[i][j].type;
+                        board[i][j].type = temp;
+
+                        if (hasMatch) return true;
+                    }
+                }
+            }
+
+            return false;
         }
     </script>
 </body>
