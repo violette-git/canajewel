@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cannabis Bejeweled</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #27ae60;
+            margin-bottom: 10px;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0 auto;
+            max-width: 800px;
+        }
+
+        canvas {
+            background-color: #34495e;
+            border: 3px solid #27ae60;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .score-container {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .instructions {
+            background-color: #34495e;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: left;
+            max-width: 500px;
+        }
+
+        .instructions h2 {
+            color: #27ae60;
+            margin-top: 0;
+        }
+
+        .instructions ul {
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        button {
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+        }
+
+        button:hover {
+            background-color: #2ecc71;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Cannabis Bejeweled</h1>
+
+        <div class="score-container">
+            Score: <span id="score">0</span>
+        </div>
+
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+
+        <button id="newGameBtn">New Game</button>
+
+        <div class="instructions">
+            <h2>How to Play:</h2>
+            <ul>
+                <li>Click on a cannabis item and then click on an adjacent item to swap them.</li>
+                <li>Create matches of <strong>4 or more</strong> identical items in a row or column.</li>
+                <li>Matched items will disappear, and new ones will fall from the top.</li>
+                <li>Score points for each match you make!</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Game constants
+        const GRID_SIZE = 8;
+        const TILE_SIZE = 50;
+        const ANIMATION_SPEED = 8;
+        const MATCH_MIN = 4; // Require matches of 4 or more
+
+        // Game variables
+        let canvas, ctx;
+        let board = [];
+        let score = 0;
+        let selectedTile = null;
+        let animating = false;
+        let matches = [];
+
+        // Cannabis leaf SVG paths for different colors
+        const cannabisLeaves = [
+            { color: "#27ae60", path: "M10,40 C15,20 20,15 25,10 C30,15 35,20 40,40 C45,35 48,30 50,25 C48,35 45,45 40,50 C35,45 30,43 25,42 C20,43 15,45 10,50 C5,45 2,35 0,25 C2,30 5,35 10,40 Z" },
+            { color: "#8e44ad", path: "M10,40 C15,20 20,15 25,10 C30,15 35,20 40,40 C45,35 48,30 50,25 C48,35 45,45 40,50 C35,45 30,43 25,42 C20,43 15,45 10,50 C5,45 2,35 0,25 C2,30 5,35 10,40 Z" },
+            { color: "#e74c3c", path: "M10,40 C15,20 20,15 25,10 C30,15 35,20 40,40 C45,35 48,30 50,25 C48,35 45,45 40,50 C35,45 30,43 25,42 C20,43 15,45 10,50 C5,45 2,35 0,25 C2,30 5,35 10,40 Z" },
+            { color: "#f1c40f", path: "M10,40 C15,20 20,15 25,10 C30,15 35,20 40,40 C45,35 48,30 50,25 C48,35 45,45 40,50 C35,45 30,43 25,42 C20,43 15,45 10,50 C5,45 2,35 0,25 C2,30 5,35 10,40 Z" },
+            { color: "#3498db", path: "M10,40 C15,20 20,15 25,10 C30,15 35,20 40,40 C45,35 48,30 50,25 C48,35 45,45 40,50 C35,45 30,43 25,42 C20,43 15,45 10,50 C5,45 2,35 0,25 C2,30 5,35 10,40 Z" }
+        ];
+
+        // Initialize the game
+        window.onload = function() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+
+            document.getElementById('newGameBtn').addEventListener('click', initGame);
+            canvas.addEventListener('click', handleClick);
+
+            initGame();
+        };
+
+        // Initialize a new game
+        function initGame() {
+            board = [];
+            score = 0;
+            selectedTile = null;
+            animating = false;
+            matches = [];
+
+            document.getElementById('score').textContent = score;
+
+            // Create the game board
+            for (let i = 0; i < GRID_SIZE; i++) {
+                board[i] = [];
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    // Generate a random tile type
+                    let tileType;
+                    do {
+                        tileType = Math.floor(Math.random() * cannabisLeaves.length);
+                        board[i][j] = {
+                            type: tileType,
+                            x: j,
+                            y: i,
+                            offsetX: 0,
+                            offsetY: 0
+                        };
+                    } while (checkForMatches()); // Ensure no matches at start
+                }
+            }
+
+            drawBoard();
+        }
+
+        // Draw the game board
+        function drawBoard() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background grid
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw tiles
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (board[i] && board[i][j]) {
+                        drawTile(board[i][j]);
+                    }
+                }
+            }
+
+            // Draw selection highlight
+            if (selectedTile) {
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(
+                    selectedTile.x * TILE_SIZE + 2,
+                    selectedTile.y * TILE_SIZE + 2,
+                    TILE_SIZE - 4,
+                    TILE_SIZE - 4
+                );
+            }
+        }
+
+        // Draw a single tile
+        function drawTile(tile) {
+            const x = tile.x * TILE_SIZE + tile.offsetX;
+            const y = tile.y * TILE_SIZE + tile.offsetY;
+
+            // Draw cannabis leaf
+            const leaf = cannabisLeaves[tile.type];
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(TILE_SIZE / 50, TILE_SIZE / 50); // Scale to fit tile size
+
+            // Draw leaf
+            ctx.fillStyle = leaf.color;
+            ctx.beginPath();
+
+            // Create path from SVG path data
+            const path = new Path2D(leaf.path);
+            ctx.fill(path);
+
+            ctx.restore();
+        }
+
+        // Handle click events
+        function handleClick(event) {
+            if (animating) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((event.clientX - rect.left) / TILE_SIZE);
+            const y = Math.floor((event.clientY - rect.top) / TILE_SIZE);
+
+            // Check if click is within board boundaries
+            if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                if (!selectedTile) {
+                    // First selection
+                    selectedTile = { x, y };
+                } else {
+                    // Second selection - check if adjacent
+                    const dx = Math.abs(selectedTile.x - x);
+                    const dy = Math.abs(selectedTile.y - y);
+
+                    if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+                        // Swap tiles
+                        swapTiles(selectedTile.x, selectedTile.y, x, y);
+                    } else {
+                        // Not adjacent, select new tile
+                        selectedTile = { x, y };
+                    }
+                }
+
+                drawBoard();
+            }
+        }
+
+        // Swap two tiles
+        function swapTiles(x1, y1, x2, y2) {
+            // Store original tiles
+            const tile1 = { ...board[y1][x1] };
+            const tile2 = { ...board[y2][x2] };
+
+            // Swap tiles
+            const temp = board[y1][x1].type;
+            board[y1][x1].type = board[y2][x2].type;
+            board[y2][x2].type = temp;
+
+            // Check if the swap creates a match
+            if (checkForMatches()) {
+                // Valid swap - process matches
+                selectedTile = null;
+                processMatches();
+            } else {
+                // Invalid swap - swap back
+                board[y1][x1].type = tile1.type;
+                board[y2][x2].type = tile2.type;
+                selectedTile = null;
+            }
+        }
+
+        // Check for matches on the board
+        function checkForMatches() {
+            matches = [];
+
+            // Check horizontal matches
+            for (let i = 0; i < GRID_SIZE; i++) {
+                let matchCount = 1;
+                let matchType = -1;
+                let matchStart = 0;
+
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (j === 0) {
+                        matchType = board[i][j].type;
+                        matchStart = j;
+                        matchCount = 1;
+                    } else if (board[i][j].type === matchType) {
+                        matchCount++;
+                    } else {
+                        if (matchCount >= MATCH_MIN) {
+                            matches.push({
+                                row: i,
+                                col: matchStart,
+                                length: matchCount,
+                                horizontal: true
+                            });
+                        }
+                        matchType = board[i][j].type;
+                        matchStart = j;
+                        matchCount = 1;
+                    }
+                }
+
+                // Check for match at the end of row
+                if (matchCount >= MATCH_MIN) {
+                    matches.push({
+                        row: i,
+                        col: matchStart,
+                        length: matchCount,
+                        horizontal: true
+                    });
+                }
+            }
+
+            // Check vertical matches
+            for (let j = 0; j < GRID_SIZE; j++) {
+                let matchCount = 1;
+                let matchType = -1;
+                let matchStart = 0;
+
+                for (let i = 0; i < GRID_SIZE; i++) {
+                    if (i === 0) {
+                        matchType = board[i][j].type;
+                        matchStart = i;
+                        matchCount = 1;
+                    } else if (board[i][j].type === matchType) {
+                        matchCount++;
+                    } else {
+                        if (matchCount >= MATCH_MIN) {
+                            matches.push({
+                                row: matchStart,
+                                col: j,
+                                length: matchCount,
+                                horizontal: false
+                            });
+                        }
+                        matchType = board[i][j].type;
+                        matchStart = i;
+                        matchCount = 1;
+                    }
+                }
+
+                // Check for match at the end of column
+                if (matchCount >= MATCH_MIN) {
+                    matches.push({
+                        row: matchStart,
+                        col: j,
+                        length: matchCount,
+                        horizontal: false
+                    });
+                }
+            }
+
+            return matches.length > 0;
+        }
+
+        // Process matches and update the board
+        function processMatches() {
+            animating = true;
+
+            // Mark matched tiles for removal
+            for (const match of matches) {
+                if (match.horizontal) {
+                    for (let j = match.col; j < match.col + match.length; j++) {
+                        board[match.row][j].matched = true;
+                    }
+                } else {
+                    for (let i = match.row; i < match.row + match.length; i++) {
+                        board[i][match.col].matched = true;
+                    }
+                }
+
+                // Update score
+                score += match.length * 10;
+                document.getElementById('score').textContent = score;
+            }
+
+            // Draw the board with matched tiles
+            drawBoard();
+
+            // Remove matched tiles and drop tiles above
+            setTimeout(() => {
+                removeMatchedTiles();
+                dropTiles();
+                fillEmptyTiles();
+
+                // Check for new matches
+                if (checkForMatches()) {
+                    processMatches();
+                } else {
+                    animating = false;
+                }
+            }, 300);
+        }
+
+        // Remove matched tiles
+        function removeMatchedTiles() {
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (board[i][j].matched) {
+                        board[i][j] = null;
+                    }
+                }
+            }
+        }
+
+        // Drop tiles to fill empty spaces
+        function dropTiles() {
+            for (let j = 0; j < GRID_SIZE; j++) {
+                let emptySpaces = 0;
+
+                for (let i = GRID_SIZE - 1; i >= 0; i--) {
+                    if (!board[i][j]) {
+                        emptySpaces++;
+                    } else if (emptySpaces > 0) {
+                        board[i + emptySpaces][j] = board[i][j];
+                        board[i + emptySpaces][j].y = i + emptySpaces;
+                        board[i][j] = null;
+                    }
+                }
+            }
+        }
+
+        // Fill empty tiles with new ones
+        function fillEmptyTiles() {
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (!board[i][j]) {
+                        board[i][j] = {
+                            type: Math.floor(Math.random() * cannabisLeaves.length),
+                            x: j,
+                            y: i,
+                            offsetX: 0,
+                            offsetY: 0
+                        };
+                    }
+                }
+            }
+
+            drawBoard();
+        }
+    </script>
+</body>
+</html>
